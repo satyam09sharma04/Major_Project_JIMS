@@ -1,0 +1,114 @@
+{
+  "_format": "hh-sol-cache-2",
+  "files": {
+    "D:\\Satyam\\PROPERTY\\blockchain\\contracts\\OwnershipTransfer.sol": {
+      "lastModificationDate": 1773853808366,
+      "contentHash": "65a8528be7628be3522c21ff5a27a3f5",
+      "sourceName": "contracts/OwnershipTransfer.sol",
+      "solcConfig": {
+        "version": "0.8.24",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.24"
+      ],
+      "artifacts": [
+        "IPropertyRegistry",
+        "OwnershipTransfer"
+      ]
+    },
+    "D:\\Satyam\\PROPERTY\\blockchain\\contracts\\PropertyHistory.sol": {
+      "lastModificationDate": 1773854867979,
+      "contentHash": "20d993c77c2f54ba2c8c33221e6f7149",
+      "sourceName": "contracts/PropertyHistory.sol",
+      "solcConfig": {
+        "version": "0.8.24",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.24"
+      ],
+      "artifacts": [
+        "PropertyHistory"
+      ]
+    },
+    "D:\\Satyam\\PROPERTY\\blockchain\\contracts\\PropertyRegistry.sol": {
+      "lastModificationDate": 1773847379901,
+      "contentHash": "bf3cfd4a3ad8443a9639454a6aa8156e",
+      "sourceName": "contracts/PropertyRegistry.sol",
+      "solcConfig": {
+        "version": "0.8.24",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.24"
+      ],
+      "artifacts": [
+        "PropertyRegistry"
+      ]
+    }
+  }
+}

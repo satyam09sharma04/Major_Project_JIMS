@@ -1,0 +1,20 @@
+{
+	"name": "ai-services",
+	"version": "1.0.0",
+	"private": true,
+	"description": "OCR, verification, and risk analysis utilities for property registry",
+	"type": "module",
+	"main": "index.js",
+	"exports": {
+		".": "./index.js"
+	},
+	"scripts": {
+		"check": "node --check index.js",
+		"check:all": "node --check index.js && node --check ocr/preprocessor.js && node --check ocr/tesseract.js && node --check riskAnalysis/riskPrompt.js && node --check riskAnalysis/riskScorer.js && node --check verification/geminiClient.js && node --check verification/promptBuilder.js && node --check verification/verifyDocument.js && node --check utils/fileReader.js"
+	},
+	"dependencies": {
+		"sharp": "^0.33.5",
+		"tesseract.js": "^6.0.1"
+	}
+}
+
