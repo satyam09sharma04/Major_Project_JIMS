@@ -5,8 +5,13 @@ export const createProperty = async (payload) => {
 	return response.data;
 };
 
-export const getAllProperties = async () => {
+export const getMyProperties = async () => {
 	const response = await api.get("/properties");
+	return response.data;
+};
+
+export const getAllProperties = async () => {
+	const response = await api.get("/properties/all");
 	return response.data;
 };
 

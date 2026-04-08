@@ -21,6 +21,11 @@ const transactionSchema = new mongoose.Schema(
 			type: Date,
 			default: Date.now,
 		},
+		chainTxHash: {
+			type: String,
+			trim: true,
+			default: "",
+		},
 	},
 	{
 		timestamps: true,

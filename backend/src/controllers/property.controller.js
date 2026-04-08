@@ -1,6 +1,7 @@
 import {
 	createProperty,
 	getAllProperties,
+	getOwnedProperties,
 	getPropertyById,
 	updateProperty,
 } from "../services/property.service.js";
@@ -8,7 +9,8 @@ import { sendCreated, sendList, sendSuccess } from "../utils/response.util.js";
 
 export const createPropertyHandler = async (req, res, next) => {
 	try {
-		const property = await createProperty(req.body);
+		const { owner: _ignoredOwner, ...safePayload } = req.body || {};
+		const property = await createProperty(safePayload, req.user);
 		return sendCreated(res, {
 			message: "Property created successfully",
 			data: property,
@@ -18,7 +20,19 @@ export const createPropertyHandler = async (req, res, next) => {
 	}
 };
 
-export const getAllPropertiesHandler = async (_req, res, next) => {
+export const getAllPropertiesHandler = async (req, res, next) => {
+	try {
+		const properties = await getOwnedProperties(req.user?._id);
+		return sendList(res, {
+			message: "Properties fetched successfully",
+			data: properties,
+		});
+	} catch (error) {
+		return next(error);
+	}
+};
+
+export const getAllPropertiesExploreHandler = async (_req, res, next) => {
 	try {
 		const properties = await getAllProperties();
 		return sendList(res, {

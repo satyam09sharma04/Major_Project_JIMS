@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import Property from "../models/Property.model.js";
 import Transaction from "../models/Transaction.model.js";
+import { getHistoryFromChain } from "./blockchain.service.js";
 
 const validatePropertyId = (propertyId) => {
 	if (!propertyId) {
@@ -32,6 +33,37 @@ export const getPropertyHistoryTimeline = async (propertyId) => {
 		.populate("fromOwner", "name email")
 		.populate("toOwner", "name email");
 
+	if (property.chainPropertyId) {
+		try {
+			const chainRecords = await getHistoryFromChain(property.chainPropertyId);
+			const chainTimeline = chainRecords.map((record) => ({
+				eventType: record.action,
+				timestamp: record.timestamp ? new Date(record.timestamp * 1000) : property.createdAt,
+				actor: record.actor,
+				details: record.details,
+				recordId: record.recordId,
+			}));
+
+			return {
+				property: {
+					id: property._id,
+					chainPropertyId: property.chainPropertyId,
+					khasraNumber: property.khasraNumber,
+					surveyNumber: property.surveyNumber,
+					plotNumber: property.plotNumber,
+					location: property.location,
+					area: property.area,
+					currentOwner: property.owner,
+				},
+				totalTransfers: chainTimeline.length,
+				timeline: chainTimeline,
+				source: "blockchain",
+			};
+		} catch {
+			// fallback to DB timeline below
+		}
+	}
+
 	const timeline = [
 		{
 			eventType: "PROPERTY_CREATED",
@@ -51,6 +83,7 @@ export const getPropertyHistoryTimeline = async (propertyId) => {
 	return {
 		property: {
 			id: property._id,
+			chainPropertyId: property.chainPropertyId || null,
 			khasraNumber: property.khasraNumber,
 			surveyNumber: property.surveyNumber,
 			plotNumber: property.plotNumber,
@@ -60,5 +93,6 @@ export const getPropertyHistoryTimeline = async (propertyId) => {
 		},
 		totalTransfers: transactions.length,
 		timeline,
+		source: "database",
 	};
 };

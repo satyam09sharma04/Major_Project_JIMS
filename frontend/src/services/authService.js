@@ -1,4 +1,4 @@
-import api from "./api";
+import api, { emitAuthChanged } from "./api";
 
 const TOKEN_KEY = "token";
 const USER_KEY = "user";
@@ -20,6 +20,7 @@ export const loginUser = async (payload) => {
 	if (user) {
 		localStorage.setItem(USER_KEY, JSON.stringify(user));
 	}
+	emitAuthChanged();
 
 	return response.data;
 };
@@ -27,6 +28,7 @@ export const loginUser = async (payload) => {
 export const logoutUser = () => {
 	localStorage.removeItem(TOKEN_KEY);
 	localStorage.removeItem(USER_KEY);
+	emitAuthChanged();
 };
 
 export const getAuthToken = () => localStorage.getItem(TOKEN_KEY);

@@ -610,7 +610,7 @@ const styles = `
     margin-bottom: 4px;
   }
 
-  .detail-summary {
+  .detail-summary { 
     font-size: 13px;
     color: var(--text-secondary);
     line-height: 1.5;

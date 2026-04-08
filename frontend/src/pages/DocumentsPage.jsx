@@ -1,33 +1,22 @@
-import { useMemo, useState } from "react";
-import api from "../services/api";
-
-const badgeStyle = (score) => {
-	if (typeof score !== "number") {
-		return { background: "#e2e8f0", color: "#334155", label: "Not Verified" };
-	}
-
-	if (score >= 80) {
-		return { background: "#dcfce7", color: "#166534", label: "Low Risk" };
-	}
-
-	if (score >= 50) {
-		return { background: "#fef9c3", color: "#854d0e", label: "Medium Risk" };
-	}
-
-	return { background: "#fee2e2", color: "#991b1b", label: "High Risk" };
-};
+import { useEffect, useMemo, useState } from "react";
+import { Link, useParams } from "react-router-dom";
+import AppNav from "../components/common/AppNav";
+import { toApiErrorMessage } from "../services/api";
+import { getDocumentsByPropertyId, uploadDocument } from "../services/documentService";
 
 const DocumentsPage = () => {
-	const [propertyId, setPropertyId] = useState("");
+	const { propertyId: routePropertyId } = useParams();
+	const [propertyId, setPropertyId] = useState(routePropertyId || "");
 	const [selectedFile, setSelectedFile] = useState(null);
 	const [documents, setDocuments] = useState([]);
 	const [uploading, setUploading] = useState(false);
 	const [loadingDocs, setLoadingDocs] = useState(false);
 	const [error, setError] = useState("");
 	const [success, setSuccess] = useState("");
-	const [lastUploadRisk, setLastUploadRisk] = useState(null);
 
-	const canUpload = propertyId.trim().length > 0 && selectedFile;
+	useEffect(() => {
+		setPropertyId(routePropertyId || "");
+	}, [routePropertyId]);
 
 	const sortedDocuments = useMemo(
 		() => [...documents].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)),
@@ -35,200 +24,96 @@ const DocumentsPage = () => {
 	);
 
 	const fetchDocuments = async (targetPropertyId = propertyId) => {
-		if (!targetPropertyId.trim()) {
-			setError("Please enter property ID first.");
-			return;
-		}
+		const pid = String(targetPropertyId || "").trim();
+		if (!pid) return;
 
 		setLoadingDocs(true);
 		setError("");
-		setSuccess("");
-
 		try {
-			const response = await api.get(`/documents/property/${targetPropertyId.trim()}`);
-			setDocuments(response?.data?.data || []);
+			const response = await getDocumentsByPropertyId(pid);
+			setDocuments(response?.data || []);
 		} catch (err) {
-			setError(err?.response?.data?.message || "Failed to fetch documents.");
+			setError(toApiErrorMessage(err, "Failed to fetch documents."));
 			setDocuments([]);
 		} finally {
 			setLoadingDocs(false);
 		}
 	};
 
+	useEffect(() => {
+		fetchDocuments(routePropertyId).catch(() => {});
+	}, [routePropertyId]);
+
 	const handleUpload = async (event) => {
 		event.preventDefault();
-		if (!canUpload) {
+		setError("");
+		setSuccess("");
+
+		if (!propertyId.trim() || !selectedFile) {
 			setError("Please provide property ID and choose a file.");
 			return;
 		}
 
 		setUploading(true);
-		setError("");
-		setSuccess("");
-
 		try {
-			const formData = new FormData();
-			formData.append("propertyId", propertyId.trim());
-			formData.append("document", selectedFile);
-
-			const response = await api.post("/documents/upload", formData, {
-				headers: {
-					"Content-Type": "multipart/form-data",
-				},
-			});
-
-			const uploaded = response?.data?.data;
-			setLastUploadRisk(response?.data?.riskScore ?? uploaded?.verification?.riskScore ?? null);
-			setSuccess("Document uploaded and AI verification completed.");
+			const response = await uploadDocument({ propertyId, file: selectedFile });
+			const risk = response?.meta?.riskScore;
+			setSuccess(
+				typeof risk === "number"
+					? `Document uploaded and verified. Risk score: ${risk}`
+					: "Document uploaded and verified successfully."
+			);
 			setSelectedFile(null);
-
-			await fetchDocuments(propertyId.trim());
+			await fetchDocuments(propertyId);
 		} catch (err) {
-			setError(err?.response?.data?.message || "Upload failed.");
+			setError(toApiErrorMessage(err, "Upload failed."));
 		} finally {
 			setUploading(false);
 		}
 	};
 
 	return (
-		<main style={{ maxWidth: 1050, margin: "32px auto", padding: "0 16px", fontFamily: "sans-serif" }}>
-			<h1 style={{ marginBottom: 6 }}>Documents Management</h1>
-			<p style={{ marginTop: 0, color: "#475569" }}>
-				Upload property documents, trigger OCR and AI verification, and review risk scores.
-			</p>
+		<div style={{ minHeight: "100vh", background: "#f8fafc", fontFamily: "sans-serif" }}>
+			<AppNav title="Documents" />
+			<main style={{ maxWidth: 1000, margin: "0 auto", padding: 16 }}>
+				<div style={{ marginBottom: 12 }}>
+					<Link to="/dashboard">Back to Dashboard</Link>
+				</div>
 
-			<section
-				style={{
-					border: "1px solid #e2e8f0",
-					borderRadius: 12,
-					padding: 16,
-					background: "#ffffff",
-					marginBottom: 16,
-				}}
-			>
-				<form onSubmit={handleUpload}>
+				<h1>Documents for Property</h1>
+				<p style={{ color: "#475569" }}>Property ID: {routePropertyId}</p>
+
+				<form onSubmit={handleUpload} style={{ background: "#fff", border: "1px solid #e2e8f0", padding: 16, borderRadius: 10 }}>
 					<div style={{ display: "grid", gap: 10 }}>
-						<label htmlFor="propertyId" style={{ fontSize: 14, color: "#334155" }}>
-							Property ID
-						</label>
-						<input
-							id="propertyId"
-							type="text"
-							placeholder="Enter property ID"
-							value={propertyId}
-							onChange={(event) => setPropertyId(event.target.value)}
-							style={{ padding: 10, borderRadius: 8, border: "1px solid #cbd5e1" }}
-						/>
-
-						<label htmlFor="document" style={{ fontSize: 14, color: "#334155" }}>
-							Document (PDF/Image)
-						</label>
-						<input
-							id="document"
-							type="file"
-							accept=".pdf,image/*"
-							onChange={(event) => setSelectedFile(event.target.files?.[0] || null)}
-						/>
-
-						<div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 6 }}>
-							<button
-								type="submit"
-								disabled={uploading || !canUpload}
-								style={{
-									padding: "10px 14px",
-									borderRadius: 8,
-									border: "1px solid #0f172a",
-									background: "#0f172a",
-									color: "#fff",
-									cursor: uploading || !canUpload ? "not-allowed" : "pointer",
-								}}
-							>
-								{uploading ? "Uploading..." : "Upload and Verify"}
-							</button>
-							<button
-								type="button"
-								onClick={() => fetchDocuments()}
-								disabled={loadingDocs}
-								style={{
-									padding: "10px 14px",
-									borderRadius: 8,
-									border: "1px solid #cbd5e1",
-									background: "#fff",
-									cursor: loadingDocs ? "not-allowed" : "pointer",
-								}}
-							>
-								{loadingDocs ? "Loading..." : "Fetch Documents"}
-							</button>
+						<input value={propertyId} onChange={(e) => setPropertyId(e.target.value)} placeholder="Property ID" />
+						<input type="file" accept=".pdf,image/*" onChange={(e) => setSelectedFile(e.target.files?.[0] || null)} />
+						<div style={{ display: "flex", gap: 8 }}>
+							<button type="submit" disabled={uploading}>{uploading ? "Uploading..." : "Upload Document"}</button>
+							<button type="button" onClick={() => fetchDocuments()} disabled={loadingDocs}>{loadingDocs ? "Loading..." : "Refresh"}</button>
 						</div>
 					</div>
 				</form>
 
-				{success ? <p style={{ color: "#166534", marginTop: 12 }}>{success}</p> : null}
-				{error ? <p style={{ color: "#b91c1c", marginTop: 12 }}>{error}</p> : null}
+				{error ? <p style={{ color: "#b91c1c" }}>{error}</p> : null}
+				{success ? <p style={{ color: "#166534" }}>{success}</p> : null}
 
-				{typeof lastUploadRisk === "number" ? (
-					<p style={{ marginTop: 10, color: "#0f172a" }}>
-						Latest upload risk score: <strong>{lastUploadRisk}</strong>
-					</p>
-				) : null}
-			</section>
+				<section style={{ marginTop: 14, display: "grid", gap: 10 }}>
+					{sortedDocuments.map((doc) => (
+						<article key={doc._id} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: 12 }}>
+							<div><strong>{doc.fileName}</strong></div>
+							<div style={{ color: "#64748b", fontSize: 13 }}>{doc.fileType}</div>
+							<div>Status: {doc?.verification?.status || "PENDING"}</div>
+							<div>Risk Score: {typeof doc?.verification?.riskScore === "number" ? doc.verification.riskScore : "-"}</div>
+							<div>Risk Level: {doc?.verification?.riskLevel || "-"}</div>
+						</article>
+					))}
 
-			<section>
-				<h2 style={{ marginBottom: 12 }}>Uploaded Documents</h2>
-				{sortedDocuments.length === 0 ? (
-					<p style={{ color: "#64748b" }}>No documents found for this property.</p>
-				) : (
-					<div style={{ display: "grid", gap: 12 }}>
-						{sortedDocuments.map((doc) => {
-							const score = doc?.verification?.riskScore;
-							const badge = badgeStyle(score);
-							return (
-								<article
-									key={doc._id}
-									style={{
-										border: "1px solid #e2e8f0",
-										borderRadius: 12,
-										padding: 14,
-										background: "#ffffff",
-									}}
-								>
-									<div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-										<div>
-											<div style={{ fontWeight: 700 }}>{doc.fileName}</div>
-											<div style={{ color: "#64748b", fontSize: 13 }}>{doc.fileType}</div>
-										</div>
-										<span
-											style={{
-												padding: "4px 10px",
-												borderRadius: 999,
-												fontSize: 12,
-												fontWeight: 700,
-												background: badge.background,
-												color: badge.color,
-											}}
-										>
-											{badge.label}
-										</span>
-									</div>
-
-									<div style={{ marginTop: 10, fontSize: 14, color: "#334155" }}>
-										<div>Risk Score: {typeof score === "number" ? score : "-"}</div>
-										<div>Verification Status: {doc?.verification?.status || "PENDING"}</div>
-										<div>
-											Match Percentage: {typeof doc?.verification?.matchPercentage === "number" ? doc.verification.matchPercentage : "-"}
-											%
-										</div>
-										{doc?.verification?.summary ? (
-											<div style={{ marginTop: 6, color: "#475569" }}>Summary: {doc.verification.summary}</div>
-										) : null}
-									</div>
-								</article>
-							);
-						})}
-					</div>
-				)}
-			</section>
-		</main>
+					{!loadingDocs && sortedDocuments.length === 0 ? (
+						<p style={{ color: "#64748b" }}>No documents found.</p>
+					) : null}
+				</section>
+			</main>
+		</div>
 	);
 };
 

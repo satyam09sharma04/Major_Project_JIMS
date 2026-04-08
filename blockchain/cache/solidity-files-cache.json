@@ -39,8 +39,8 @@
       ]
     },
     "D:\\Satyam\\PROPERTY\\blockchain\\contracts\\PropertyHistory.sol": {
-      "lastModificationDate": 1773854867979,
-      "contentHash": "20d993c77c2f54ba2c8c33221e6f7149",
+      "lastModificationDate": 1775548380544,
+      "contentHash": "66b2f642ab3eaf4b05c1ed16d501b0e5",
       "sourceName": "contracts/PropertyHistory.sol",
       "solcConfig": {
         "version": "0.8.24",
@@ -75,8 +75,8 @@
       ]
     },
     "D:\\Satyam\\PROPERTY\\blockchain\\contracts\\PropertyRegistry.sol": {
-      "lastModificationDate": 1773847379901,
-      "contentHash": "bf3cfd4a3ad8443a9639454a6aa8156e",
+      "lastModificationDate": 1775548380541,
+      "contentHash": "40363e6f2f87e54c2094334dcbd3fe08",
       "sourceName": "contracts/PropertyRegistry.sol",
       "solcConfig": {
         "version": "0.8.24",

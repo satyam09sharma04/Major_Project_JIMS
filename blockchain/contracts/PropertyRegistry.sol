@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 contract PropertyRegistry {
 	struct Property {
 		uint256 propertyId;
+		string metadata;
 		string khasraNumber;
 		string surveyNumber;
 		string plotNumber;
@@ -25,6 +26,7 @@ contract PropertyRegistry {
 	event PropertyRegistered(
 		uint256 indexed propertyId,
 		address indexed owner,
+		string metadata,
 		string khasraNumber,
 		string surveyNumber,
 		string plotNumber
@@ -87,6 +89,7 @@ contract PropertyRegistry {
 
 		properties[propertyId] = Property({
 			propertyId: propertyId,
+			metadata: "",
 			khasraNumber: khasraNumber,
 			surveyNumber: surveyNumber,
 			plotNumber: plotNumber,
@@ -100,7 +103,40 @@ contract PropertyRegistry {
 
 		propertyFingerprintToId[fingerprint] = propertyId;
 
-		emit PropertyRegistered(propertyId, owner, khasraNumber, surveyNumber, plotNumber);
+		emit PropertyRegistered(propertyId, owner, "", khasraNumber, surveyNumber, plotNumber);
+	}
+
+	function registerProperty(uint256 propertyId, string calldata metadata, address owner)
+		external
+		returns (uint256 registeredPropertyId)
+	{
+		if (owner == address(0)) revert InvalidAddress();
+		if (propertyId == 0) {
+			registeredPropertyId = nextPropertyId;
+			nextPropertyId += 1;
+		} else {
+			if (properties[propertyId].exists) revert DuplicateProperty();
+			registeredPropertyId = propertyId;
+			if (propertyId >= nextPropertyId) {
+				nextPropertyId = propertyId + 1;
+			}
+		}
+
+		properties[registeredPropertyId] = Property({
+			propertyId: registeredPropertyId,
+			metadata: metadata,
+			khasraNumber: "",
+			surveyNumber: "",
+			plotNumber: "",
+			location: "",
+			area: 1,
+			currentOwner: owner,
+			registeredAt: block.timestamp,
+			updatedAt: block.timestamp,
+			exists: true
+		});
+
+		emit PropertyRegistered(registeredPropertyId, owner, metadata, "", "", "");
 	}
 
 	function updatePropertyMetadata(uint256 propertyId, string calldata location, uint256 area)

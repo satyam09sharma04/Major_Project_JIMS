@@ -3,21 +3,31 @@ import axios from "axios";
 const TOKEN_KEY = "token";
 const USER_KEY = "user";
 const DEFAULT_TIMEOUT_MS = 15000;
+export const AUTH_CHANGED_EVENT = "auth:changed";
+
+export const emitAuthChanged = () => {
+	if (typeof window !== "undefined") {
+		window.dispatchEvent(new Event(AUTH_CHANGED_EVENT));
+	}
+};
 
 export const getAuthToken = () => localStorage.getItem(TOKEN_KEY);
 
 export const setAuthToken = (token) => {
 	if (!token) {
 		localStorage.removeItem(TOKEN_KEY);
+		emitAuthChanged();
 		return;
 	}
 
 	localStorage.setItem(TOKEN_KEY, token);
+	emitAuthChanged();
 };
 
 export const clearAuthStorage = () => {
 	localStorage.removeItem(TOKEN_KEY);
 	localStorage.removeItem(USER_KEY);
+	emitAuthChanged();
 };
 
 const api = axios.create({

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
 	createPropertyHandler,
+	getAllPropertiesExploreHandler,
 	getAllPropertiesHandler,
 	getPropertyByIdHandler,
 	updatePropertyHandler,
@@ -13,6 +14,7 @@ propertyRouter.use(requireAuth);
 
 propertyRouter.post("/", createPropertyHandler);
 propertyRouter.get("/", getAllPropertiesHandler);
+propertyRouter.get("/all", getAllPropertiesExploreHandler);
 propertyRouter.get("/:propertyId", getPropertyByIdHandler);
 propertyRouter.put("/:propertyId", updatePropertyHandler);
 

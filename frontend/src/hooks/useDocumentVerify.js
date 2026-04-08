@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import api from "../services/api";
+import { getDocumentsByPropertyId, verifyDocumentById } from "../services/documentService";
 
 const normalizeError = (error, fallback) => {
 	if (!error) {
@@ -81,12 +81,12 @@ const useDocumentVerify = (initialPropertyId = "") => {
 			setInfo("");
 
 			try {
-				const response = await api.get(`/documents/property/${candidate}`);
-				const list = response?.data?.data || [];
+				const response = await getDocumentsByPropertyId(candidate);
+				const normalized = response?.data || [];
 				setPropertyId(candidate);
-				setDocuments(list);
-				setInfo(`Loaded ${list.length} document(s).`);
-				return list;
+				setDocuments(normalized);
+				setInfo(`Loaded ${normalized.length} document(s).`);
+				return normalized;
 			} catch (err) {
 				const message = normalizeError(err, "Failed to load documents for verification.");
 				setError(message);
@@ -116,7 +116,7 @@ const useDocumentVerify = (initialPropertyId = "") => {
 			setInfo("");
 
 			try {
-				await api.post(`/verify/${documentId}`);
+				await verifyDocumentById(documentId);
 				const refreshed = await loadDocuments(activePropertyId);
 				setInfo("Verification re-run completed.");
 				return refreshed;

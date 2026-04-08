@@ -36,6 +36,21 @@ const propertySchema = new mongoose.Schema(
 			required: [true, "Area is required"],
 			min: [0.01, "Area must be greater than 0"],
 		},
+		chainPropertyId: {
+			type: String,
+			trim: true,
+			index: true,
+		},
+		chainTxHash: {
+			type: String,
+			trim: true,
+			default: "",
+		},
+		ownerWallet: {
+			type: String,
+			trim: true,
+			default: "",
+		},
 	},
 	{
 		timestamps: true,

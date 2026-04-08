@@ -1,11 +1,12 @@
 import { useCallback, useMemo, useState } from "react";
-import api, { toApiErrorMessage } from "../services/api";
+import { toApiErrorMessage } from "../services/api";
 import {
 	createProperty,
 	getAllProperties,
 	getPropertyById,
 	updateProperty,
 } from "../services/propertyService";
+import { transferOwnership as transferOwnershipApi } from "../services/transferService";
 
 const useProperty = () => {
 	const [properties, setProperties] = useState([]);
@@ -130,12 +131,8 @@ const useProperty = () => {
 			}
 
 			const payload = await runAction(async () => {
-				const response = await api.post("/transfer", {
-					propertyId: pid,
-					newOwnerId: ownerId,
-				});
-
-				return response?.data?.data || null;
+				const response = await transferOwnershipApi({ propertyId: pid, newOwnerId: ownerId });
+				return response?.data || null;
 			}, "Failed to transfer ownership.");
 
 			setTransferResult(payload);

@@ -88,6 +88,10 @@ contract PropertyHistory {
 		return propertyHistory[propertyId];
 	}
 
+	function getHistory(uint256 propertyId) external view returns (HistoryRecord[] memory) {
+		return propertyHistory[propertyId];
+	}
+
 	function getHistoryByRange(uint256 propertyId, uint256 offset, uint256 limit)
 		external
 		view

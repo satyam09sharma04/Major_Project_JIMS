@@ -1,28 +1,30 @@
+import fs from "node:fs";
+import path from "node:path";
+import { JsonRpcProvider, Wallet, Contract } from "ethers";
+
 const DEFAULT_CONFIRMATIONS = 1;
 
-const REGISTRY_ABI = [
-	"function registerProperty(string khasraNumber,string surveyNumber,string plotNumber,string location,uint256 area,address owner) returns (uint256)",
-	"function transferOwnership(uint256 propertyId,address newOwner)",
-	"function getProperty(uint256 propertyId) view returns (tuple(uint256 propertyId,string khasraNumber,string surveyNumber,string plotNumber,string location,uint256 area,address currentOwner,uint256 registeredAt,uint256 updatedAt,bool exists))",
-	"function ownerOf(uint256 propertyId) view returns (address)",
-	"event PropertyRegistered(uint256 indexed propertyId,address indexed owner,string khasraNumber,string surveyNumber,string plotNumber)",
-];
+const resolveConfigPaths = () => {
+	const cwd = process.cwd();
+	return [
+		path.resolve(cwd, "src", "config", "contract-config.json"),
+		path.resolve(cwd, "..", "blockchain", "config", "contract-config.json"),
+		path.resolve(cwd, "..", "shared", "blockchain-config.json"),
+		path.resolve(cwd, "src", "config", "blockchain-config.json"),
+	];
+};
 
-const TRANSFER_ABI = [
-	"function requestTransfer(uint256 propertyId,address toOwner) returns (uint256)",
-	"function approveTransfer(uint256 requestId)",
-	"function executeTransfer(uint256 requestId)",
-	"function cancelTransfer(uint256 requestId)",
-	"function transferRequests(uint256 requestId) view returns (uint256 requestIdOut,uint256 propertyId,address fromOwner,address toOwner,bool approved,bool executed,uint256 createdAt)",
-	"event TransferRequested(uint256 indexed requestId,uint256 indexed propertyId,address indexed fromOwner,address toOwner)",
-];
+const loadChainConfig = () => {
+	for (const target of resolveConfigPaths()) {
+		if (fs.existsSync(target)) {
+			const raw = fs.readFileSync(target, "utf8");
+			console.log(`[backend:blockchain] Loaded config from ${target}`);
+			return JSON.parse(raw);
+		}
+	}
 
-const HISTORY_ABI = [
-	"function recordAction(uint256 propertyId,address actor,string action,string details) returns (uint256)",
-	"function getHistoryCount(uint256 propertyId) view returns (uint256)",
-	"function getFullHistory(uint256 propertyId) view returns ((uint256 recordId,uint256 propertyId,address actor,string action,string details,uint256 timestamp)[])",
-	"function getHistoryByRange(uint256 propertyId,uint256 offset,uint256 limit) view returns ((uint256 recordId,uint256 propertyId,address actor,string action,string details,uint256 timestamp)[])",
-];
+	return null;
+};
 
 const toError = (message, statusCode = 500, details) => {
 	const error = new Error(message);
@@ -33,94 +35,77 @@ const toError = (message, statusCode = 500, details) => {
 	return error;
 };
 
-const normalizeAddress = (value) => String(value ?? "").trim();
+const normalizeAddress = (value = "") => String(value).trim();
 
-const normalizePrivateKey = (privateKeyRaw) => {
-	const key = String(privateKeyRaw ?? "").trim();
-	if (!key) {
+const normalizePrivateKey = (value = "") => {
+	const raw = String(value).trim();
+	if (!raw) {
 		return "";
 	}
-
-	return key.startsWith("0x") ? key : `0x${key}`;
+	return raw.startsWith("0x") ? raw : `0x${raw}`;
 };
 
-const normalizeBigintRecord = (record) => ({
-	recordId: Number(record.recordId),
-	propertyId: Number(record.propertyId),
-	actor: record.actor,
-	action: record.action,
-	details: record.details,
-	timestamp: Number(record.timestamp),
-});
-
 export const getBlockchainConfig = () => {
-	const rpcUrl = process.env.BLOCKCHAIN_RPC_URL || process.env.LOCAL_RPC_URL || "";
-	const privateKey = normalizePrivateKey(process.env.BLOCKCHAIN_PRIVATE_KEY || process.env.PRIVATE_KEY || "");
+	const fileConfig = loadChainConfig();
+	const privateKey = normalizePrivateKey(process.env.PRIVATE_KEY || process.env.BLOCKCHAIN_PRIVATE_KEY || "");
+	const rpcUrl = process.env.BLOCKCHAIN_RPC_URL || process.env.LOCAL_RPC_URL || fileConfig?.network?.rpcUrl || "";
+	const contracts = fileConfig?.contracts || fileConfig || {};
 
-	const registryAddress = normalizeAddress(
-		process.env.PROPERTY_REGISTRY_ADDRESS || process.env.BLOCKCHAIN_REGISTRY_ADDRESS
+	const registry = normalizeAddress(
+		process.env.PROPERTY_REGISTRY_ADDRESS || contracts?.PropertyRegistry?.address || ""
 	);
-	const transferAddress = normalizeAddress(
-		process.env.OWNERSHIP_TRANSFER_ADDRESS || process.env.BLOCKCHAIN_TRANSFER_ADDRESS
+	const transfer = normalizeAddress(
+		process.env.OWNERSHIP_TRANSFER_ADDRESS || contracts?.OwnershipTransfer?.address || ""
 	);
-	const historyAddress = normalizeAddress(
-		process.env.PROPERTY_HISTORY_ADDRESS || process.env.BLOCKCHAIN_HISTORY_ADDRESS
+	const history = normalizeAddress(
+		process.env.PROPERTY_HISTORY_ADDRESS || contracts?.PropertyHistory?.address || ""
 	);
-
-	const enabled = Boolean(rpcUrl && privateKey && registryAddress && transferAddress);
 
 	return {
-		enabled,
-		rpcUrl,
+		enabled: Boolean(fileConfig && privateKey && rpcUrl && registry && history),
 		privateKey,
-		addresses: {
-			registry: registryAddress,
-			transfer: transferAddress,
-			history: historyAddress,
+		rpcUrl,
+		fileConfig,
+		contracts: {
+			registry: {
+				address: registry,
+				abi: contracts?.PropertyRegistry?.abi || [],
+			},
+			transfer: {
+				address: transfer,
+				abi: contracts?.OwnershipTransfer?.abi || [],
+			},
+			history: {
+				address: history,
+				abi: contracts?.PropertyHistory?.abi || [],
+			},
 		},
+		network: fileConfig?.network || {},
 	};
 };
 
 export const assertBlockchainEnabled = () => {
 	const config = getBlockchainConfig();
-
 	if (!config.enabled) {
-		throw toError(
-			"Blockchain service is not configured. Set BLOCKCHAIN_RPC_URL/LOCAL_RPC_URL, PRIVATE_KEY, PROPERTY_REGISTRY_ADDRESS and OWNERSHIP_TRANSFER_ADDRESS.",
-			503
-		);
+		throw toError("Blockchain config missing. Run blockchain deployment first.", 503, {
+			expectedPaths: resolveConfigPaths(),
+		});
 	}
-
 	return config;
-};
-
-const loadEthers = async () => {
-	try {
-		return await import("ethers");
-	} catch {
-		throw toError("Missing dependency: install 'ethers' in backend package", 500);
-	}
 };
 
 const getClients = async () => {
 	const config = assertBlockchainEnabled();
-	const { JsonRpcProvider, Wallet, Contract } = await loadEthers();
-
 	const provider = new JsonRpcProvider(config.rpcUrl);
 	const signer = new Wallet(config.privateKey, provider);
-
-	const registry = new Contract(config.addresses.registry, REGISTRY_ABI, signer);
-	const transfer = new Contract(config.addresses.transfer, TRANSFER_ABI, signer);
-	const history = config.addresses.history
-		? new Contract(config.addresses.history, HISTORY_ABI, signer)
-		: null;
+	console.log(`[backend:blockchain] registry=${config.contracts.registry.address}`);
 
 	return {
 		provider,
 		signer,
-		registry,
-		transfer,
-		history,
+		registry: new Contract(config.contracts.registry.address, config.contracts.registry.abi, signer),
+		transfer: new Contract(config.contracts.transfer.address, config.contracts.transfer.abi, signer),
+		history: new Contract(config.contracts.history.address, config.contracts.history.abi, signer),
 		config,
 	};
 };
@@ -138,13 +123,10 @@ const waitForTx = async (tx, confirmations = DEFAULT_CONFIRMATIONS) => {
 export const getBlockchainStatus = async () => {
 	const config = getBlockchainConfig();
 	if (!config.enabled) {
-		return {
-			enabled: false,
-			configuredContracts: config.addresses,
-		};
+		return { enabled: false };
 	}
 
-	const { provider, signer, config: safeConfig } = await getClients();
+	const { provider, signer } = await getClients();
 	const network = await provider.getNetwork();
 
 	return {
@@ -153,114 +135,26 @@ export const getBlockchainStatus = async () => {
 			name: network.name,
 			chainId: Number(network.chainId),
 		},
-		signer: await signer.getAddress(),
-		configuredContracts: safeConfig.addresses,
+		signerAddress: await signer.getAddress(),
+		contracts: {
+			registry: config.contracts.registry.address,
+			transfer: config.contracts.transfer.address,
+			history: config.contracts.history.address,
+		},
 	};
 };
 
-export const registerPropertyOnChain = async ({
-	khasraNumber,
-	surveyNumber,
-	plotNumber,
-	location,
-	area,
-	owner,
-}) => {
-	const { registry, signer } = await getClients();
-
-	if (!khasraNumber || !surveyNumber || !plotNumber || !location || area == null) {
-		throw toError("khasraNumber, surveyNumber, plotNumber, location and area are required", 400);
-	}
-
-	const ownerAddress = normalizeAddress(owner) || (await signer.getAddress());
-	const tx = await registry.registerProperty(
-		khasraNumber,
-		surveyNumber,
-		plotNumber,
-		location,
-		BigInt(Math.floor(Number(area))),
-		ownerAddress
-	);
-
-	const mined = await waitForTx(tx);
-
-	let propertyId = null;
-	try {
-		for (const log of mined.receipt?.logs || []) {
-			const parsed = registry.interface.parseLog(log);
-			if (parsed?.name === "PropertyRegistered") {
-				propertyId = Number(parsed.args.propertyId);
-				break;
-			}
-		}
-	} catch {
-		propertyId = null;
-	}
-
-	return {
-		...mined,
-		propertyId,
-	};
-};
-
-export const requestOwnershipTransferOnChain = async ({ propertyId, toOwner }) => {
-	if (propertyId == null || !toOwner) {
-		throw toError("propertyId and toOwner are required", 400);
-	}
-
-	const { transfer } = await getClients();
-	const tx = await transfer.requestTransfer(BigInt(propertyId), toOwner);
-	const mined = await waitForTx(tx);
-
-	let requestId = null;
-	try {
-		for (const log of mined.receipt?.logs || []) {
-			const parsed = transfer.interface.parseLog(log);
-			if (parsed?.name === "TransferRequested") {
-				requestId = Number(parsed.args.requestId);
-				break;
-			}
-		}
-	} catch {
-		requestId = null;
-	}
-
-	return {
-		...mined,
-		requestId,
-	};
-};
-
-export const approveOwnershipTransferOnChain = async ({ requestId }) => {
-	if (requestId == null) {
-		throw toError("requestId is required", 400);
-	}
-
-	const { transfer } = await getClients();
-	const tx = await transfer.approveTransfer(BigInt(requestId));
-	return waitForTx(tx);
-};
-
-export const executeOwnershipTransferOnChain = async ({ requestId }) => {
-	if (requestId == null) {
-		throw toError("requestId is required", 400);
-	}
-
-	const { transfer } = await getClients();
-	const tx = await transfer.executeTransfer(BigInt(requestId));
-	return waitForTx(tx);
-};
-
-export const getPropertyOnChain = async (propertyId) => {
-	if (propertyId == null) {
-		throw toError("propertyId is required", 400);
+export const getPropertyOnChain = async (chainPropertyId) => {
+	if (!Number.isFinite(Number(chainPropertyId))) {
+		throw toError("chainPropertyId is required", 400);
 	}
 
 	const { registry } = await getClients();
-	const data = await registry.getProperty(BigInt(propertyId));
+	const data = await registry.getProperty(BigInt(chainPropertyId));
 
 	return {
 		propertyId: Number(data.propertyId),
+		metadata: data.metadata,
 		khasraNumber: data.khasraNumber,
 		surveyNumber: data.surveyNumber,
 		plotNumber: data.plotNumber,
@@ -273,44 +167,105 @@ export const getPropertyOnChain = async (propertyId) => {
 	};
 };
 
-export const getPropertyOwnerOnChain = async (propertyId) => {
-	if (propertyId == null) {
-		throw toError("propertyId is required", 400);
+export const registerPropertyOnChain = async ({
+	chainPropertyId,
+	metadata,
+	owner,
+	allowExisting = true,
+} = {}) => {
+	if (!Number.isFinite(Number(chainPropertyId))) {
+		throw toError("chainPropertyId is required", 400);
+	}
+
+	const { registry, signer } = await getClients();
+	const ownerAddress = normalizeAddress(owner) || (await signer.getAddress());
+
+	if (allowExisting) {
+		try {
+			const existing = await registry.getProperty(BigInt(chainPropertyId));
+			if (existing?.exists) {
+				return {
+					skipped: true,
+					propertyId: Number(existing.propertyId),
+					currentOwner: existing.currentOwner,
+				};
+			}
+		} catch {
+			// Ignore and proceed to register.
+		}
+	}
+
+	const tx = await registry["registerProperty(uint256,string,address)"](
+		BigInt(chainPropertyId),
+		String(metadata || ""),
+		ownerAddress
+	);
+	const mined = await waitForTx(tx);
+
+	return {
+		...mined,
+		propertyId: Number(chainPropertyId),
+	};
+};
+
+export const transferOwnershipOnChain = async ({
+	chainPropertyId,
+	newOwner,
+	chainTxHash,
+} = {}) => {
+	if (!Number.isFinite(Number(chainPropertyId))) {
+		throw toError("chainPropertyId is required", 400);
+	}
+
+	if (!newOwner) {
+		throw toError("newOwner wallet is required for on-chain transfer", 400);
 	}
 
 	const { registry } = await getClients();
-	return registry.ownerOf(BigInt(propertyId));
-};
-
-export const recordPropertyHistoryOnChain = async ({ propertyId, actor, action, details = "" }) => {
-	if (propertyId == null || !actor || !action) {
-		throw toError("propertyId, actor and action are required", 400);
+	const currentOwner = await registry.ownerOf(BigInt(chainPropertyId));
+	if (normalizeAddress(currentOwner).toLowerCase() === normalizeAddress(newOwner).toLowerCase()) {
+		return {
+			skipped: true,
+			txHash: chainTxHash || "",
+			reason: "Ownership already updated on-chain",
+		};
 	}
 
-	const { history } = await getClients();
-	if (!history) {
-		throw toError("PROPERTY_HISTORY_ADDRESS is not configured", 503);
-	}
-
-	const tx = await history.recordAction(BigInt(propertyId), actor, action, details);
+	const tx = await registry.transferOwnership(BigInt(chainPropertyId), newOwner);
 	return waitForTx(tx);
 };
 
-export const getPropertyHistoryOnChain = async (propertyId, { offset = 0, limit = 20, full = false } = {}) => {
-	if (propertyId == null) {
-		throw toError("propertyId is required", 400);
+export const getHistoryFromChain = async (chainPropertyId) => {
+	if (!Number.isFinite(Number(chainPropertyId))) {
+		throw toError("chainPropertyId is required", 400);
 	}
 
 	const { history } = await getClients();
-	if (!history) {
-		throw toError("PROPERTY_HISTORY_ADDRESS is not configured", 503);
+	const records = await history.getHistory(BigInt(chainPropertyId));
+
+	return records.map((record) => ({
+		recordId: Number(record.recordId),
+		propertyId: Number(record.propertyId),
+		actor: record.actor,
+		action: record.action,
+		details: record.details,
+		timestamp: Number(record.timestamp),
+	}));
+};
+
+export const getChainTransactionByHash = async (txHash) => {
+	const normalizedHash = String(txHash || "").trim();
+	if (!normalizedHash) {
+		throw toError("chainTxHash is required", 400);
 	}
 
-	const records = full
-		? await history.getFullHistory(BigInt(propertyId))
-		: await history.getHistoryByRange(BigInt(propertyId), BigInt(offset), BigInt(limit));
+	const { provider } = await getClients();
+	const transaction = await provider.getTransaction(normalizedHash);
+	if (!transaction) {
+		throw toError("Blockchain transaction not found", 404);
+	}
 
-	return records.map(normalizeBigintRecord);
+	return transaction;
 };
 
 export default {
@@ -318,12 +273,8 @@ export default {
 	assertBlockchainEnabled,
 	getBlockchainStatus,
 	registerPropertyOnChain,
-	requestOwnershipTransferOnChain,
-	approveOwnershipTransferOnChain,
-	executeOwnershipTransferOnChain,
+	transferOwnershipOnChain,
 	getPropertyOnChain,
-	getPropertyOwnerOnChain,
-	recordPropertyHistoryOnChain,
-	getPropertyHistoryOnChain,
+	getHistoryFromChain,
+	getChainTransactionByHash,
 };
-

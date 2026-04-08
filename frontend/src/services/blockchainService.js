@@ -1,39 +1,65 @@
 import { BrowserProvider, Contract, formatEther } from "ethers";
 
-const REGISTRY_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || "";
-const TRANSFER_ADDRESS = import.meta.env.VITE_TRANSFER_CONTRACT_ADDRESS || "";
+let configCache = null;
 
-const PROPERTY_REGISTRY_ABI = [
-	"function registerProperty(string khasraNumber,string surveyNumber,string plotNumber,string location,uint256 area,address owner) returns (uint256)",
-	"function transferOwnership(uint256 propertyId,address newOwner)",
-	"function getProperty(uint256 propertyId) view returns (tuple(uint256 propertyId,string khasraNumber,string surveyNumber,string plotNumber,string location,uint256 area,address currentOwner,uint256 registeredAt,uint256 updatedAt,bool exists))",
-	"function ownerOf(uint256 propertyId) view returns (address)",
-	"event PropertyRegistered(uint256 indexed propertyId,address indexed owner,string khasraNumber,string surveyNumber,string plotNumber)",
-	"event PropertyOwnershipTransferred(uint256 indexed propertyId,address indexed fromOwner,address indexed toOwner)",
-];
-
-const OWNERSHIP_TRANSFER_ABI = [
-	"function requestTransfer(uint256 propertyId,address toOwner) returns (uint256)",
-	"function approveTransfer(uint256 requestId)",
-	"function executeTransfer(uint256 requestId)",
-	"function cancelTransfer(uint256 requestId)",
-	"function transferRequests(uint256 requestId) view returns (uint256 requestIdOut,uint256 propertyId,address fromOwner,address toOwner,bool approved,bool executed,uint256 createdAt)",
-];
+const toError = (message, code = "BLOCKCHAIN_ERROR") => {
+	const error = new Error(message);
+	error.code = code;
+	return error;
+};
 
 const getEthereum = () => {
 	if (!window.ethereum) {
-		throw new Error("MetaMask is not available. Please install MetaMask.");
+		throw toError("MetaMask not installed. Please install MetaMask extension.", "METAMASK_MISSING");
 	}
-
 	return window.ethereum;
 };
 
-const requireAddress = (address, name) => {
-	if (!address) {
-		throw new Error(`${name} is missing. Set it in frontend .env.`);
+export const loadBlockchainConfig = async () => {
+	if (configCache) {
+		console.log("[blockchainService] using cached contract config");
+		return configCache;
 	}
 
-	return address;
+	const targets = ["/contract-config.json", "/blockchain-config.json"];
+	let config = null;
+
+	for (const target of targets) {
+		const response = await fetch(target, { cache: "no-store" });
+		if (!response.ok) {
+			continue;
+		}
+		config = await response.json();
+		console.log(`[blockchainService] loaded contract config from ${target}`);
+		break;
+	}
+
+	if (!config) {
+		throw toError("Unable to load contract config. Run blockchain deploy first.", "CONFIG_MISSING");
+	}
+
+	const contracts = config?.contracts || config;
+	const registry = contracts?.PropertyRegistry;
+	const history = contracts?.PropertyHistory;
+
+	if (!registry?.address || !registry?.abi?.length) {
+		throw toError("Invalid blockchain config. Contract addresses/ABI missing.", "CONFIG_INVALID");
+	}
+	if (!history?.address || !history?.abi?.length) {
+		throw toError("Invalid blockchain config. PropertyHistory address/ABI missing.", "CONFIG_INVALID");
+	}
+
+	config = {
+		...config,
+		contracts: {
+			...contracts,
+			PropertyRegistry: registry,
+			PropertyHistory: history,
+		},
+	};
+
+	configCache = config;
+	return config;
 };
 
 export const getBrowserProvider = () => {
@@ -43,12 +69,18 @@ export const getBrowserProvider = () => {
 
 export const connectWallet = async () => {
 	const ethereum = getEthereum();
+	console.log("[blockchainService] requesting MetaMask account access");
 	await ethereum.request({ method: "eth_requestAccounts" });
 	return getWalletInfo();
 };
 
-export const disconnectWallet = () => {
-	return null;
+export const autoConnectWallet = async () => {
+	const ethereum = getEthereum();
+	const accounts = await ethereum.request({ method: "eth_accounts" });
+	if (!accounts?.length) {
+		return null;
+	}
+	return getWalletInfo();
 };
 
 export const getWalletInfo = async () => {
@@ -65,98 +97,141 @@ export const getWalletInfo = async () => {
 	};
 };
 
-export const getRegistryContract = async () => {
+const ensureWalletConnected = async () => {
+	const info = await connectWallet();
+	if (!info?.address) {
+		throw toError("MetaMask account not connected.", "WALLET_NOT_CONNECTED");
+	}
+	console.log(`[blockchainService] MetaMask connected: ${info.address}`);
+	return info;
+};
+
+export const ensureCorrectNetwork = async () => {
+	const config = await loadBlockchainConfig();
+	const provider = getBrowserProvider();
+	const network = await provider.getNetwork();
+	const expected = Number(config?.network?.chainId || 31337);
+	if (Number(network.chainId) !== expected) {
+		throw toError(`Network mismatch. Switch MetaMask to chainId ${expected}.`, "NETWORK_MISMATCH");
+	}
+	return true;
+};
+
+const getContractBundle = async () => {
+	await ensureWalletConnected();
+	await ensureCorrectNetwork();
+	const config = await loadBlockchainConfig();
 	const provider = getBrowserProvider();
 	const signer = await provider.getSigner();
-	const address = requireAddress(REGISTRY_ADDRESS, "VITE_CONTRACT_ADDRESS");
+	console.log(`[blockchainService] using registry contract: ${config.contracts.PropertyRegistry.address}`);
 
-	return new Contract(address, PROPERTY_REGISTRY_ABI, signer);
+	return {
+		signer,
+		registry: new Contract(
+			config.contracts.PropertyRegistry.address,
+			config.contracts.PropertyRegistry.abi,
+			signer
+		),
+		history: new Contract(
+			config.contracts.PropertyHistory.address,
+			config.contracts.PropertyHistory.abi,
+			signer
+		),
+	};
 };
 
-export const getOwnershipTransferContract = async () => {
-	const provider = getBrowserProvider();
-	const signer = await provider.getSigner();
-	const address = requireAddress(TRANSFER_ADDRESS, "VITE_TRANSFER_CONTRACT_ADDRESS");
+export const registerPropertyOnChain = async ({ propertyId, metadata, owner }) => {
+	const { registry } = await getContractBundle();
+	try {
+		const requestedPropertyId = Number(propertyId) || 0;
+		const predictedPropertyId = await registry["registerProperty(uint256,string,address)"].staticCall(
+			BigInt(requestedPropertyId),
+			String(metadata || ""),
+			owner
+		);
 
-	return new Contract(address, OWNERSHIP_TRANSFER_ABI, signer);
+		const tx = await registry["registerProperty(uint256,string,address)"](
+			BigInt(requestedPropertyId),
+			String(metadata || ""),
+			owner
+		);
+		console.log(`[blockchainService] registerProperty tx: ${tx.hash}`);
+		const receipt = await tx.wait();
+
+		const eventLog = receipt?.logs
+			?.map((entry) => {
+				try {
+					return registry.interface.parseLog(entry);
+				} catch {
+					return null;
+				}
+			})
+			.find((entry) => entry?.name === "PropertyRegistered");
+
+		const finalPropertyId = eventLog?.args?.propertyId
+			? Number(eventLog.args.propertyId)
+			: Number(predictedPropertyId);
+
+		console.log(`[blockchainService] chainPropertyId: ${finalPropertyId}`);
+		return {
+			txHash: tx.hash,
+			receipt,
+			status: "success",
+			chainPropertyId: String(finalPropertyId),
+		};
+	} catch (error) {
+		if (error?.code === 4001) {
+			throw toError("Transaction rejected by user.", "USER_REJECTED");
+		}
+		throw toError(error?.shortMessage || error?.message || "Failed to register property on-chain", "TX_FAILED");
+	}
 };
 
-export const registerPropertyOnChain = async ({
-	khasraNumber,
-	surveyNumber,
-	plotNumber,
-	location,
-	area,
-	owner,
-}) => {
-	const contract = await getRegistryContract();
-
-	const tx = await contract.registerProperty(
-		khasraNumber,
-		surveyNumber,
-		plotNumber,
-		location,
-		BigInt(Math.floor(Number(area))),
-		owner
-	);
-
-	const receipt = await tx.wait();
-	return { txHash: tx.hash, receipt };
-};
-
-export const transferOwnershipDirectOnChain = async ({ propertyId, newOwner }) => {
-	const contract = await getRegistryContract();
-	const tx = await contract.transferOwnership(BigInt(propertyId), newOwner);
-	const receipt = await tx.wait();
-
-	return { txHash: tx.hash, receipt };
-};
-
-export const requestOwnershipTransferOnChain = async ({ propertyId, toOwner }) => {
-	const transferContract = await getOwnershipTransferContract();
-	const tx = await transferContract.requestTransfer(BigInt(propertyId), toOwner);
-	const receipt = await tx.wait();
-
-	return { txHash: tx.hash, receipt };
-};
-
-export const approveOwnershipTransferOnChain = async ({ requestId }) => {
-	const transferContract = await getOwnershipTransferContract();
-	const tx = await transferContract.approveTransfer(BigInt(requestId));
-	const receipt = await tx.wait();
-
-	return { txHash: tx.hash, receipt };
-};
-
-export const executeOwnershipTransferOnChain = async ({ requestId }) => {
-	const transferContract = await getOwnershipTransferContract();
-	const tx = await transferContract.executeTransfer(BigInt(requestId));
-	const receipt = await tx.wait();
-
-	return { txHash: tx.hash, receipt };
+export const transferOwnershipOnChain = async ({ propertyId, newOwner }) => {
+	const { registry } = await getContractBundle();
+	try {
+		const tx = await registry.transferOwnership(BigInt(propertyId), newOwner);
+		console.log(`[blockchainService] transferOwnership tx: ${tx.hash}`);
+		const receipt = await tx.wait();
+		return {
+			txHash: tx.hash,
+			receipt,
+			status: "success",
+		};
+	} catch (error) {
+		if (error?.code === 4001) {
+			throw toError("Transaction rejected by user.", "USER_REJECTED");
+		}
+		throw toError(error?.shortMessage || error?.message || "Failed to transfer ownership on-chain", "TX_FAILED");
+	}
 };
 
 export const getPropertyOnChain = async (propertyId) => {
-	const contract = await getRegistryContract();
-	return contract.getProperty(BigInt(propertyId));
+	const { registry } = await getContractBundle();
+	return registry.getProperty(BigInt(propertyId));
 };
 
-export const getPropertyOwnerOnChain = async (propertyId) => {
-	const contract = await getRegistryContract();
-	return contract.ownerOf(BigInt(propertyId));
+export const getHistoryFromChain = async (propertyId) => {
+	const { history } = await getContractBundle();
+	const records = await history.getHistory(BigInt(propertyId));
+	return records.map((record) => ({
+		recordId: Number(record.recordId),
+		propertyId: Number(record.propertyId),
+		actor: record.actor,
+		action: record.action,
+		details: record.details,
+		timestamp: Number(record.timestamp),
+	}));
 };
 
 export default {
+	loadBlockchainConfig,
 	connectWallet,
-	disconnectWallet,
+	autoConnectWallet,
 	getWalletInfo,
-	getRegistryContract,
-	getOwnershipTransferContract,
+	ensureCorrectNetwork,
 	registerPropertyOnChain,
-	transferOwnershipDirectOnChain,
-	requestOwnershipTransferOnChain,
-	approveOwnershipTransferOnChain,
-	executeOwnershipTransferOnChain,
+	transferOwnershipOnChain,
 	getPropertyOnChain,
-	getPropertyOwnerOnChain,
+	getHistoryFromChain,
 };

@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { loginUser } from "../services/authService";
+import { useAuth } from "../context/AuthContext";
 
 const Home = () => {
 	const navigate = useNavigate();
+	const { login, isAuthenticated } = useAuth();
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
 	const [error, setError] = useState("");
@@ -15,12 +16,18 @@ const Home = () => {
 		setTimeout(() => setMounted(true), 60);
 	}, []);
 
+	useEffect(() => {
+		if (isAuthenticated) {
+			navigate("/dashboard", { replace: true });
+		}
+	}, [isAuthenticated, navigate]);
+
 	const handleSubmit = async (event) => {
 		event.preventDefault();
 		setError("");
 		setLoading(true);
 		try {
-			await loginUser({ email, password });
+			await login({ email, password });
 			navigate("/dashboard");
 		} catch (err) {
 			setError(err?.response?.data?.message || "Login failed");

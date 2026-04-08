@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { AUTH_CHANGED_EVENT } from "../services/api";
 import {
 	getAuthToken,
 	getStoredUser,
@@ -27,10 +28,13 @@ export const AuthProvider = ({ children }) => {
 		setLoading(false);
 
 		const handleStorage = () => syncFromStorage();
+		const handleAuthChanged = () => syncFromStorage();
 		window.addEventListener("storage", handleStorage);
+		window.addEventListener(AUTH_CHANGED_EVENT, handleAuthChanged);
 
 		return () => {
 			window.removeEventListener("storage", handleStorage);
+			window.removeEventListener(AUTH_CHANGED_EVENT, handleAuthChanged);
 		};
 	}, [syncFromStorage]);
 
@@ -42,8 +46,9 @@ export const AuthProvider = ({ children }) => {
 
 	const register = useCallback(async (payload) => {
 		const response = await registerUser(payload);
+		syncFromStorage();
 		return response;
-	}, []);
+	}, [syncFromStorage]);
 
 	const logout = useCallback(() => {
 		logoutUser();

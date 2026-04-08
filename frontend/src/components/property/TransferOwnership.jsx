@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import AlertBanner from "../common/AlertBanner";
 import Loader from "../common/Loader";
-import api from "../../services/api";
+import { toApiErrorMessage } from "../../services/api";
+import { transferOwnership } from "../../services/transferService";
 
 const TransferOwnership = ({
 	defaultPropertyId = "",
@@ -43,18 +44,18 @@ const TransferOwnership = ({
 		setLoading(true);
 
 		try {
-			const response = await api.post("/transfer", {
+ 			const response = await transferOwnership({
 				propertyId: propertyId.trim(),
 				newOwnerId: newOwnerId.trim(),
 			});
 
-			const payload = response?.data?.data || null;
+			const payload = response?.data || null;
 			setResult(payload);
 			setSuccess("Property ownership transferred successfully.");
 			setNewOwnerId("");
-			onTransferSuccess?.(payload, response?.data);
+			onTransferSuccess?.(payload, response);
 		} catch (err) {
-			setError(err?.response?.data?.message || "Failed to transfer ownership.");
+			setError(toApiErrorMessage(err, "Failed to transfer ownership."));
 		} finally {
 			setLoading(false);
 		}

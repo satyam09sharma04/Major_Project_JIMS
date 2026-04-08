@@ -1,195 +1,102 @@
-import { useMemo, useState } from "react";
-import api from "../services/api";
+import { useEffect, useState } from "react";
+import { Link, useParams } from "react-router-dom";
+import AppNav from "../components/common/AppNav";
+import api, { toApiErrorMessage } from "../services/api";
+import { getHistoryFromChain } from "../services/blockchainService";
+import { getPropertyById } from "../services/propertyService";
 
-const formatDateTime = (value) => {
-	if (!value) {
-		return "-";
-	}
-
-	const parsed = new Date(value);
-	if (Number.isNaN(parsed.getTime())) {
-		return "-";
-	}
-
-	return parsed.toLocaleString();
-};
-
-const toDisplayOwner = (owner) => {
-	if (!owner) {
-		return "Unknown Owner";
-	}
-
-	if (typeof owner === "string") {
-		return owner;
-	}
-
-	if (owner.name && owner.email) {
-		return `${owner.name} (${owner.email})`;
-	}
-
-	return owner.name || owner.email || owner._id || "Unknown Owner";
+const formatDate = (value) => {
+	if (!value) return "-";
+	const date = new Date(value);
+	return Number.isNaN(date.getTime()) ? "-" : date.toLocaleString();
 };
 
 const HistoryPage = () => {
-	const [propertyId, setPropertyId] = useState("");
-	const [historyData, setHistoryData] = useState(null);
+	const { propertyId: routePropertyId } = useParams();
+	const [propertyData, setPropertyData] = useState(null);
+	const [timeline, setTimeline] = useState([]);
+	const [source, setSource] = useState("-");
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState("");
 
-	const timeline = useMemo(() => historyData?.timeline ?? [], [historyData]);
-
-	const handleFetchHistory = async (event) => {
-		event.preventDefault();
-		const trimmedId = propertyId.trim();
-
-		if (!trimmedId) {
-			setError("Please enter a property ID.");
-			setHistoryData(null);
-			return;
-		}
+	const load = async () => {
+		if (!routePropertyId) return;
 
 		setLoading(true);
 		setError("");
-
 		try {
-			const response = await api.get(`/history/${trimmedId}`);
-			setHistoryData(response?.data?.data || null);
-		} catch (err) {
-			setError(err?.response?.data?.message || "Failed to load history.");
-			setHistoryData(null);
+			const propertyResp = await getPropertyById(routePropertyId);
+			const property = propertyResp?.data || null;
+			setPropertyData(property);
+
+			const chainPropertyId = Number(property?.chainPropertyId);
+			if (Number.isFinite(chainPropertyId)) {
+				const chainHistory = await getHistoryFromChain(chainPropertyId);
+				setTimeline(
+					chainHistory.map((item) => ({
+						eventType: item.action,
+						timestamp: item.timestamp ? new Date(item.timestamp * 1000).toISOString() : null,
+						details: item.details,
+						actor: item.actor,
+						recordId: item.recordId,
+					}))
+				);
+				setSource("blockchain");
+				return;
+			}
+
+			throw new Error("Chain property id missing");
+		} catch (chainErr) {
+			try {
+				const fallback = await api.get(`/history/${routePropertyId}`);
+				setTimeline(fallback?.data?.data?.timeline || []);
+				setSource("database-fallback");
+			} catch (err) {
+				setError(toApiErrorMessage(err, toApiErrorMessage(chainErr, "Failed to load history.")));
+				setTimeline([]);
+			}
 		} finally {
 			setLoading(false);
 		}
 	};
 
+	useEffect(() => {
+		load().catch(() => {});
+	}, [routePropertyId]);
+
 	return (
-		<main style={{ maxWidth: 1000, margin: "32px auto", padding: "0 16px", fontFamily: "sans-serif" }}>
-			<header style={{ marginBottom: 18 }}>
-				<h1 style={{ marginBottom: 6 }}>Ownership History</h1>
-				<p style={{ margin: 0, color: "#475569" }}>
-					View complete property ownership timeline including registration and transfer events.
-				</p>
-			</header>
+		<div style={{ minHeight: "100vh", background: "#f8fafc", fontFamily: "sans-serif" }}>
+			<AppNav title="Property History" />
+			<main style={{ maxWidth: 1000, margin: "0 auto", padding: 16 }}>
+				<div style={{ marginBottom: 12 }}>
+					<Link to="/dashboard">Back to Dashboard</Link>
+				</div>
 
-			<section
-				style={{
-					border: "1px solid #e2e8f0",
-					borderRadius: 12,
-					padding: 16,
-					background: "#ffffff",
-					marginBottom: 18,
-				}}
-			>
-				<form onSubmit={handleFetchHistory} style={{ display: "grid", gap: 10 }}>
-					<label htmlFor="propertyId" style={{ fontSize: 14, color: "#334155" }}>
-						Property ID
-					</label>
-					<div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-						<input
-							id="propertyId"
-							type="text"
-							placeholder="Enter property ID"
-							value={propertyId}
-							onChange={(event) => setPropertyId(event.target.value)}
-							style={{
-								flex: 1,
-								minWidth: 280,
-								padding: 10,
-								borderRadius: 8,
-								border: "1px solid #cbd5e1",
-							}}
-						/>
-						<button
-							type="submit"
-							disabled={loading}
-							style={{
-								padding: "10px 14px",
-								borderRadius: 8,
-								border: "1px solid #0f172a",
-								background: "#0f172a",
-								color: "#ffffff",
-								cursor: loading ? "not-allowed" : "pointer",
-							}}
-						>
-							{loading ? "Fetching..." : "Get Timeline"}
-						</button>
-					</div>
-				</form>
+				<h1>Ownership History</h1>
+				<p style={{ color: "#475569" }}>Property ID: {routePropertyId}</p>
+				<p style={{ color: "#0f766e" }}>Source: {source}</p>
+				{propertyData?.chainPropertyId ? <p>Chain Property ID: {propertyData.chainPropertyId}</p> : null}
 
-				{error ? <p style={{ color: "#b91c1c", marginTop: 10 }}>{error}</p> : null}
-			</section>
+				<button type="button" onClick={() => load().catch(() => {})} disabled={loading}>
+					{loading ? "Loading..." : "Refresh Timeline"}
+				</button>
 
-			{historyData ? (
-				<>
-					<section
-						style={{
-							display: "grid",
-							gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-							gap: 12,
-							marginBottom: 16,
-						}}
-					>
-						<div style={{ border: "1px solid #e2e8f0", borderRadius: 10, padding: 12, background: "#fff" }}>
-							<div style={{ fontSize: 12, color: "#64748b" }}>Khasra Number</div>
-							<div style={{ fontWeight: 700 }}>{historyData?.property?.khasraNumber || "-"}</div>
-						</div>
-						<div style={{ border: "1px solid #e2e8f0", borderRadius: 10, padding: 12, background: "#fff" }}>
-							<div style={{ fontSize: 12, color: "#64748b" }}>Survey / Plot</div>
-							<div style={{ fontWeight: 700 }}>
-								{historyData?.property?.surveyNumber || "-"} / {historyData?.property?.plotNumber || "-"}
-							</div>
-						</div>
-						<div style={{ border: "1px solid #e2e8f0", borderRadius: 10, padding: 12, background: "#fff" }}>
-							<div style={{ fontSize: 12, color: "#64748b" }}>Current Owner</div>
-							<div style={{ fontWeight: 700 }}>{toDisplayOwner(historyData?.property?.currentOwner)}</div>
-						</div>
-						<div style={{ border: "1px solid #e2e8f0", borderRadius: 10, padding: 12, background: "#fff" }}>
-							<div style={{ fontSize: 12, color: "#64748b" }}>Total Transfers</div>
-							<div style={{ fontWeight: 700 }}>{historyData?.totalTransfers ?? 0}</div>
-						</div>
-					</section>
+				{error ? <p style={{ color: "#b91c1c" }}>{error}</p> : null}
 
-					<section style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, background: "#ffffff" }}>
-						<h2 style={{ marginTop: 0 }}>Timeline Events</h2>
-						{timeline.length === 0 ? (
-							<p style={{ color: "#64748b" }}>No history events available.</p>
-						) : (
-							<div style={{ display: "grid", gap: 12 }}>
-								{timeline.map((event, index) => {
-									const isTransfer = event.eventType === "OWNERSHIP_TRANSFER";
-									return (
-										<article
-											key={`${event.transactionId || event.timestamp}-${index}`}
-											style={{
-												border: "1px solid #f1f5f9",
-												borderRadius: 10,
-												padding: 12,
-												background: isTransfer ? "#f8fafc" : "#f0fdf4",
-											}}
-										>
-											<div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-												<strong>{event.eventType}</strong>
-												<span style={{ color: "#64748b", fontSize: 13 }}>{formatDateTime(event.timestamp)}</span>
-											</div>
+				<section style={{ display: "grid", gap: 10, marginTop: 12 }}>
+					{timeline.map((item, index) => (
+						<article key={`${item.recordId || index}`} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: 12 }}>
+							<div><strong>{item.eventType || "EVENT"}</strong></div>
+							<div>{formatDate(item.timestamp)}</div>
+							{item.actor ? <div>Actor: {item.actor}</div> : null}
+							<div>{item.details || "-"}</div>
+						</article>
+					))}
 
-											{isTransfer ? (
-												<p style={{ marginBottom: 0 }}>
-													From: {toDisplayOwner(event.fromOwner)}
-													<br />
-													To: {toDisplayOwner(event.toOwner)}
-												</p>
-											) : (
-												<p style={{ marginBottom: 0 }}>{event.details || "Property record created"}</p>
-											)}
-										</article>
-									);
-								})}
-							</div>
-						)}
-					</section>
-				</>
-			) : null}
-		</main>
+					{!loading && timeline.length === 0 ? <p style={{ color: "#64748b" }}>No history records found.</p> : null}
+				</section>
+			</main>
+		</div>
 	);
 };
 

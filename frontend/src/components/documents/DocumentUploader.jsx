@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import AlertBanner from "../common/AlertBanner";
 import Loader from "../common/Loader";
-import api from "../../services/api";
+import { uploadDocument } from "../../services/documentService";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const ALLOWED_MIME_TYPES = new Set(["application/pdf", "image/jpeg", "image/jpg", "image/png", "image/webp"]);
@@ -76,19 +76,13 @@ const DocumentUploader = ({ propertyId = "", onUploaded }) => {
 		setSuccess("");
 
 		try {
-			const payload = new FormData();
-			payload.append("propertyId", propertyId.trim());
-			payload.append("document", file);
+ 			const response = await uploadDocument({ propertyId: propertyId.trim(), file });
 
-			const response = await api.post("/documents/upload", payload, {
-				headers: { "Content-Type": "multipart/form-data" },
-			});
-
-			const result = response?.data?.data || null;
+			const result = response?.data || null;
 			setUploadResult(result);
 			setSuccess("Document uploaded and verification completed successfully.");
 			setFile(null);
-			onUploaded?.(result, response?.data);
+			onUploaded?.(result, response);
 		} catch (err) {
 			setError(err?.response?.data?.message || "Upload failed. Please try again.");
 		} finally {
