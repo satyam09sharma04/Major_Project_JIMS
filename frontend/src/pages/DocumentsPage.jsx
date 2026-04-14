@@ -105,6 +105,12 @@ const DocumentsPage = () => {
 							<div>Status: {doc?.verification?.status || "PENDING"}</div>
 							<div>Risk Score: {typeof doc?.verification?.riskScore === "number" ? doc.verification.riskScore : "-"}</div>
 							<div>Risk Level: {doc?.verification?.riskLevel || "-"}</div>
+							{doc?.fileUrl ? (
+								<div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+									<a href={doc.fileUrl} target="_blank" rel="noreferrer">Open</a>
+									<a href={doc.fileUrl} download>Download</a>
+								</div>
+							) : null}
 						</article>
 					))}
 

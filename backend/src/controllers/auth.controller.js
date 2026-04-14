@@ -1,7 +1,11 @@
 import { loginUser, registerUser } from "../services/auth.service.js";
 
 const normalizeAuthPayload = (body = {}) => ({
-	name: typeof body.name === "string" ? body.name.trim() : "",
+	name: typeof body.name === "string"
+		? body.name.trim()
+		: typeof body.username === "string"
+			? body.username.trim()
+			: "",
 	email: typeof body.email === "string" ? body.email.trim() : "",
 	password: typeof body.password === "string" ? body.password : "",
 });

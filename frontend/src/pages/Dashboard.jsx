@@ -11,7 +11,7 @@ const Dashboard = () => {
 	const [properties, setProperties] = useState([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState("");
-	const [activeTab, setActiveTab] = useState("my");
+	const [activeTab, setActiveTab] = useState("all");
 
 	const getOwnerId = (property) => {
 		if (!property?.owner) {

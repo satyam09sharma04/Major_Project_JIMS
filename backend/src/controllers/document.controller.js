@@ -4,9 +4,11 @@ import { sendCreated, sendList } from "../utils/response.util.js";
 export const uploadDocument = async (req, res, next) => {
 	try {
 		const propertyId = req.body?.propertyId ?? req.params?.propertyId;
+		const baseUrl = `${req.protocol}://${req.get("host")}`;
 		const document = await uploadPropertyDocument({
 			propertyId,
 			file: req.file,
+			baseUrl,
 		});
 
 		return sendCreated(res, {
@@ -24,7 +26,8 @@ export const uploadDocument = async (req, res, next) => {
 export const getDocuments = async (req, res, next) => {
 	try {
 		const propertyId = req.params?.propertyId ?? req.query?.propertyId;
-		const documents = await getDocumentsByPropertyId(propertyId);
+		const baseUrl = `${req.protocol}://${req.get("host")}`;
+		const documents = await getDocumentsByPropertyId(propertyId, baseUrl);
 
 		return sendList(res, {
 			message: "Documents fetched successfully",

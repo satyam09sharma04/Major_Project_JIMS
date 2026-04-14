@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
+import PublicRoute from "./components/PublicRoute";
 import AdminPanel from "./pages/AdminPanel";
 import Dashboard from "./pages/Dashboard";
 import DocumentsPage from "./pages/DocumentsPage";
@@ -25,8 +26,11 @@ const App = () => {
 	return (
 		<Routes>
 			<Route path="/" element={<RootRedirect />} />
-			<Route path="/login" element={<Login />} />
-			<Route path="/signup" element={<Signup />} />
+
+			<Route element={<PublicRoute />}>
+				<Route path="/login" element={<Login />} />
+				<Route path="/signup" element={<Signup />} />
+			</Route>
 
 			<Route element={<ProtectedRoute />}>
 				<Route path="/dashboard" element={<Dashboard />} />
