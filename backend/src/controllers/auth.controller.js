@@ -1,4 +1,6 @@
 import { loginUser, registerUser } from "../services/auth.service.js";
+import { sendSignupEmails } from "../services/emailService.js";
+import logger from "../utils/logger.js";
 
 const normalizeAuthPayload = (body = {}) => ({
 	name: typeof body.name === "string"
@@ -19,6 +21,18 @@ export const register = async (req, res, next) => {
 		}
 
 		const result = await registerUser({ name, email, password });
+
+		try {
+			await sendSignupEmails({
+				userName: result.user?.name || name,
+				userEmail: result.user?.email || email,
+			});
+		} catch (emailError) {
+			logger.error("Signup email dispatch failed", {
+				error: emailError,
+				userEmail: result.user?.email || email,
+			});
+		}
 
 		return res.status(201).json({
 			message: "User registered successfully",

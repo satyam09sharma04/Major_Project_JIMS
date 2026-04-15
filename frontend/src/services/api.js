@@ -38,23 +38,27 @@ const api = axios.create({
 	},
 });
 
+// Request interceptor — har request mein token lagao
 api.interceptors.request.use(
 	(config) => {
 		const token = getAuthToken();
 		if (token) {
 			config.headers.Authorization = `Bearer ${token}`;
 		}
-
 		return config;
 	},
 	(error) => Promise.reject(error)
 );
 
+// Response interceptor — 401 aane par auto logout
 api.interceptors.response.use(
 	(response) => response,
 	(error) => {
 		if (error?.response?.status === 401) {
+			// Storage clear karo
 			clearAuthStorage();
+			// AuthContext ko batao
+			window.dispatchEvent(new Event("auth:unauthorized"));
 		}
 
 		return Promise.reject(error);

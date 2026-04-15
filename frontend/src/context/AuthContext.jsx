@@ -1,85 +1,99 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { AUTH_CHANGED_EVENT } from "../services/api";
 import {
-	getAuthToken,
-	getStoredUser,
-	loginUser,
-	logoutUser,
-	registerUser,
+    getAuthToken,
+    getStoredUser,
+    loginUser,
+    logoutUser,
+    registerUser,
 } from "../services/authService";
 
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-	const [user, setUser] = useState(null);
-	const [token, setToken] = useState("");
-	const [loading, setLoading] = useState(true);
+    const [user, setUser] = useState(null);
+    const [token, setToken] = useState("");
+    const [loading, setLoading] = useState(true);
 
-	const syncFromStorage = useCallback(() => {
-		const nextToken = getAuthToken() || "";
-		const nextUser = getStoredUser();
+    const syncFromStorage = useCallback(() => {
+        const nextToken = getAuthToken() || "";
+        const nextUser = getStoredUser();
+        setToken(nextToken);
+        setUser(nextUser);
+    }, []);
 
-		setToken(nextToken);
-		setUser(nextUser);
-	}, []);
+    // Token expire hone par auto logout
+    const handleUnauthorized = useCallback(() => {
+        logoutUser();
+        setToken("");
+        setUser(null);
+        window.location.href = "/login";
+    }, []);
 
-	useEffect(() => {
-		syncFromStorage();
-		setLoading(false);
+    useEffect(() => {
+        // Teeno ek saath set — no race condition
+        const nextToken = getAuthToken() || "";
+        const nextUser = getStoredUser();
+        setToken(nextToken);
+        setUser(nextUser);
+        setLoading(false);
 
-		const handleStorage = () => syncFromStorage();
-		const handleAuthChanged = () => syncFromStorage();
-		window.addEventListener("storage", handleStorage);
-		window.addEventListener(AUTH_CHANGED_EVENT, handleAuthChanged);
+        const handleStorage = () => syncFromStorage();
+        const handleAuthChanged = () => syncFromStorage();
+        const handleUnauth = () => handleUnauthorized();
 
-		return () => {
-			window.removeEventListener("storage", handleStorage);
-			window.removeEventListener(AUTH_CHANGED_EVENT, handleAuthChanged);
-		};
-	}, [syncFromStorage]);
+        window.addEventListener("storage", handleStorage);
+        window.addEventListener(AUTH_CHANGED_EVENT, handleAuthChanged);
+        window.addEventListener("auth:unauthorized", handleUnauth);
 
-	const login = useCallback(async (payload) => {
-		const response = await loginUser(payload);
-		syncFromStorage();
-		return response;
-	}, [syncFromStorage]);
+        return () => {
+            window.removeEventListener("storage", handleStorage);
+            window.removeEventListener(AUTH_CHANGED_EVENT, handleAuthChanged);
+            window.removeEventListener("auth:unauthorized", handleUnauth);
+        };
+    }, [syncFromStorage, handleUnauthorized]);
 
-	const register = useCallback(async (payload) => {
-		const response = await registerUser(payload);
-		syncFromStorage();
-		return response;
-	}, [syncFromStorage]);
+    const login = useCallback(async (payload) => {
+        const response = await loginUser(payload);
+        syncFromStorage();
+        return response;
+    }, [syncFromStorage]);
 
-	const logout = useCallback(() => {
-		logoutUser();
-		syncFromStorage();
-	}, [syncFromStorage]);
+    const register = useCallback(async (payload) => {
+        const response = await registerUser(payload);
+        syncFromStorage();
+        return response;
+    }, [syncFromStorage]);
 
-	const value = useMemo(
-		() => ({
-			user,
-			token,
-			loading,
-			isAuthenticated: Boolean(token),
-			login,
-			register,
-			logout,
-			refreshAuth: syncFromStorage,
-		}),
-		[loading, login, logout, register, syncFromStorage, token, user]
-	);
+    const logout = useCallback(() => {
+        logoutUser();
+        setToken("");
+        setUser(null);
+    }, []);
 
-	return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+    const value = useMemo(
+        () => ({
+            user,
+            token,
+            loading,
+            isAuthenticated: Boolean(token),
+            login,
+            register,
+            logout,
+            refreshAuth: syncFromStorage,
+        }),
+        [loading, login, logout, register, syncFromStorage, token, user]
+    );
+
+    return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = () => {
-	const context = useContext(AuthContext);
-
-	if (!context) {
-		throw new Error("useAuth must be used within an AuthProvider");
-	}
-
-	return context;
+    const context = useContext(AuthContext);
+    if (!context) {
+        throw new Error("useAuth must be used within an AuthProvider");
+    }
+    return context;
 };
 
 export default AuthContext;
