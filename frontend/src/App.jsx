@@ -6,11 +6,14 @@ import AdminPanel from "./pages/AdminPanel";
 import Dashboard from "./pages/Dashboard";
 import DocumentsPage from "./pages/DocumentsPage";
 import HistoryPage from "./pages/HistoryPage";
+import Home from "./pages/Home";
 import Login from "./pages/Login";
 import RegisterProperty from "./pages/RegisterProperty";
 import Signup from "./pages/Signup";
 import TransferPage from "./pages/TransferPage";
 import VerifyPage from "./pages/VerifyPage";
+
+const ALLOW_AUTHENTICATED_USERS_ON_HOME = true;
 
 const RootRedirect = () => {
 	const { loading, isAuthenticated } = useAuth();
@@ -19,13 +22,18 @@ const RootRedirect = () => {
 		return <div style={{ padding: 24, fontFamily: "sans-serif" }}>Loading...</div>;
 	}
 
-	return <Navigate to={isAuthenticated ? "/dashboard" : "/login"} replace />;
+	return <Navigate to={isAuthenticated ? "/dashboard" : "/home"} replace />;
 };
 
 const App = () => {
 	return (
 		<Routes>
 			<Route path="/" element={<RootRedirect />} />
+
+			<Route element={<PublicRoute redirectAuthenticated={!ALLOW_AUTHENTICATED_USERS_ON_HOME} />}>
+				<Route path="/home" element={<Home />} />
+				<Route path="/Home" element={<Home />} />
+			</Route>
 
 			<Route element={<PublicRoute />}>
 				<Route path="/login" element={<Login />} />
