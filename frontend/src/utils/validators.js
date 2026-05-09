@@ -131,6 +131,12 @@ export const validateTransferForm = (payload = {}) => {
 		errors.newOwnerId = "New owner ID must be a valid 24-character ID.";
 	}
 
+	if (!isRequired(payload.newOwnerWallet)) {
+		errors.newOwnerWallet = "New owner wallet is required.";
+	} else if (!isValidEthereumAddress(payload.newOwnerWallet)) {
+		errors.newOwnerWallet = "New owner wallet must be a valid Ethereum address.";
+	}
+
 	return errors;
 };
 

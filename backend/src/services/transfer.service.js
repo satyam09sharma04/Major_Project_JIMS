@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { getAddress, isAddress } from "ethers";
 import Property from "../models/Property.model.js";
 import Transaction from "../models/Transaction.model.js";
 import User from "../models/User.model.js";
@@ -28,6 +29,14 @@ export const transferPropertyOwnership = async ({
 	validateObjectId(propertyId, "propertyId");
 	validateObjectId(newOwnerId, "newOwnerId");
 	validateObjectId(requestUser?._id, "requestUser._id");
+
+	if (!isAddress(String(newOwnerWallet || "").trim())) {
+		const error = new Error("newOwnerWallet must be a valid Ethereum address");
+		error.statusCode = 400;
+		throw error;
+	}
+
+	const normalizedNewOwnerWallet = getAddress(String(newOwnerWallet || "").trim());
 
 	const session = await mongoose.startSession();
 
@@ -107,8 +116,8 @@ export const transferPropertyOwnership = async ({
 		}
 
 		propertyInTxn.owner = newOwnerId;
-		if (newOwnerWallet) {
-			propertyInTxn.ownerWallet = newOwnerWallet;
+		if (normalizedNewOwnerWallet) {
+			propertyInTxn.ownerWallet = normalizedNewOwnerWallet;
 		}
 		await propertyInTxn.save({ session });
 

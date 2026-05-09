@@ -23,6 +23,15 @@ const userSchema = new mongoose.Schema(
       minlength: [6, "Password must be at least 6 characters"],
       select: false,
     },
+    walletAddress: {
+      type: String,
+      trim: true,
+      default: "",
+      validate: {
+        validator: (value) => !value || /^0x[a-fA-F0-9]{40}$/.test(value),
+        message: "Wallet address must be a valid Ethereum address",
+      },
+    },
   },
   {
     timestamps: true,

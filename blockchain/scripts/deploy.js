@@ -139,6 +139,8 @@ async function main() {
   writeJson(path.join(rootDir, "blockchain", "config", "contract-config.json"), contractConfig);
   writeJson(path.join(rootDir, "frontend", "public", "contract-config.json"), contractConfig);
   writeJson(path.join(rootDir, "backend", "src", "config", "contract-config.json"), contractConfig);
+  writeJson(path.join(rootDir, "frontend", "public", "abi", "PropertyRegistry.abi.json"), readArtifactAbi("PropertyRegistry"));
+  writeJson(path.join(rootDir, "frontend", "public", "abi", "PropertyHistory.abi.json"), readArtifactAbi("PropertyHistory"));
 
   // Backward-compatible locations.
   writeJson(path.join(rootDir, "shared", "blockchain-config.json"), contractConfig);

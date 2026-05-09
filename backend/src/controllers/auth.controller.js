@@ -10,22 +10,24 @@ const normalizeAuthPayload = (body = {}) => ({
 			: "",
 	email: typeof body.email === "string" ? body.email.trim() : "",
 	password: typeof body.password === "string" ? body.password : "",
+	walletAddress: typeof body.walletAddress === "string" ? body.walletAddress.trim() : "",
 });
 
 export const register = async (req, res, next) => {
 	try {
-		const { name, email, password } = normalizeAuthPayload(req.body);
+		const { name, email, password, walletAddress } = normalizeAuthPayload(req.body);
 
 		if (!name || !email || !password) {
 			return res.status(400).json({ message: "Name, email, and password are required" });
 		}
 
-		const result = await registerUser({ name, email, password });
+		const result = await registerUser({ name, email, password, walletAddress });
 
 		try {
 			await sendSignupEmails({
 				userName: result.user?.name || name,
 				userEmail: result.user?.email || email,
+				userId: result.user?._id?.toString() || result.user?.id || null,
 			});
 		} catch (emailError) {
 			logger.error("Signup email dispatch failed", {

@@ -1,5 +1,6 @@
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import { getAddress, isAddress } from "ethers";
 import User from "../models/User.model.js";
 
 const SALT_ROUNDS = 10;
@@ -21,7 +22,22 @@ const generateToken = (userId) => {
 	return jwt.sign({ userId }, secret, { expiresIn });
 };
 
-export const registerUser = async ({ name, email, password }) => {
+const normalizeWalletAddress = (value = "") => {
+	const trimmed = String(value || "").trim();
+	if (!trimmed) {
+		return "";
+	}
+
+	if (!isAddress(trimmed)) {
+		const error = new Error("Wallet address must be a valid Ethereum address");
+		error.statusCode = 400;
+		throw error;
+	}
+
+	return getAddress(trimmed);
+};
+
+export const registerUser = async ({ name, email, password, walletAddress }) => {
 	const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
 
 	if (existingUser) {
@@ -31,11 +47,13 @@ export const registerUser = async ({ name, email, password }) => {
 	}
 
 	const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+	const normalizedWalletAddress = normalizeWalletAddress(walletAddress);
 
 	const user = await User.create({
 		name,
 		email,
 		password: hashedPassword,
+		walletAddress: normalizedWalletAddress,
 	});
 
 	const token = generateToken(user._id.toString());
